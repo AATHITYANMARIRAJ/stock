@@ -3,58 +3,41 @@ import pandas as pd
 import yfinance as yf
 from keras.models import load_model
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.preprocessing import MinMaxScale
 
+#LSTM model
 model = load_model('D:\\Stock-Predictions-Model-main\\Stock-Predictions-Model-main\\Stock Predictions Model.keras')
 
-
+# Define Streamlit app
 st.header('Stock Market Predictor')
 
-stock =st.text_input('Enter Stock Symnbol', 'GOOG')
-start = '2012-01-01'
-end = '2022-12-31'
+# User input for stock symbol
+available_stocks = ['TATAMOTORS.NS', 'AAPL', 'GOOG', 'MSFT', 'AMZN']  # Add more stocks as needed
+selected_stock = st.selectbox('Select Stock Symbol', available_stocks)
 
-data = yf.download(stock, start ,end)
+# User input for start and end dates
+start_date = st.date_input('Start Date', pd.to_datetime('today'), format='YYYY/MM/DD')
+end_date = st.date_input('End Date', pd.to_datetime('today'), format='YYYY/MM/DD')
 
+# Fetch data using yfinance
+data = yf.download(selected_stock, start=start_date, end=end_date)
+
+# Display stock data
 st.subheader('Stock Data')
 st.write(data)
 
+# Preprocess data
 data_train = pd.DataFrame(data.Close[0: int(len(data)*0.80)])
 data_test = pd.DataFrame(data.Close[int(len(data)*0.80): len(data)])
 
-from sklearn.preprocessing import MinMaxScaler
 scaler = MinMaxScaler(feature_range=(0,1))
-
 pas_100_days = data_train.tail(100)
 data_test = pd.concat([pas_100_days, data_test], ignore_index=True)
 data_test_scale = scaler.fit_transform(data_test)
 
-st.subheader('Price vs MA50')
-ma_50_days = data.Close.rolling(50).mean()
-fig1 = plt.figure(figsize=(8,6))
-plt.plot(ma_50_days, 'r')
-plt.plot(data.Close, 'g')
-plt.show()
-st.pyplot(fig1)
-
-st.subheader('Price vs MA50 vs MA100')
-ma_100_days = data.Close.rolling(100).mean()
-fig2 = plt.figure(figsize=(8,6))
-plt.plot(ma_50_days, 'r')
-plt.plot(ma_100_days, 'b')
-plt.plot(data.Close, 'g')
-plt.show()
-st.pyplot(fig2)
-
-st.subheader('Price vs MA100 vs MA200')
-ma_200_days = data.Close.rolling(200).mean()
-fig3 = plt.figure(figsize=(8,6))
-plt.plot(ma_100_days, 'r')
-plt.plot(ma_200_days, 'b')
-plt.plot(data.Close, 'g')
-plt.show()
-st.pyplot(fig3)
-
+# Make predictions using the LSTM model
 x = []
 y = []
 
@@ -62,20 +45,110 @@ for i in range(100, data_test_scale.shape[0]):
     x.append(data_test_scale[i-100:i])
     y.append(data_test_scale[i,0])
 
-x,y = np.array(x), np.array(y)
+x, y = np.array(x), np.array(y)
 
 predict = model.predict(x)
 
-scale = 1/scaler.scale_
+scale = 1 / scaler.scale_
 
 predict = predict * scale
 y = y * scale
 
-st.subheader('Original Price vs Predicted Price')
-fig4 = plt.figure(figsize=(8,6))
-plt.plot(predict, 'r', label='Original Price')
-plt.plot(y, 'g', label = 'Predicted Price')
-plt.xlabel('Time')
-plt.ylabel('Price')
-plt.show()
-st.pyplot(fig4)
+# Plot actual stock prices against predicted prices
+fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                    subplot_titles=('Stock deviation', 'Volume'))
+ 
+fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price'), row=1, col=1)
+
+
+
+
+
+fig.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume'), row=2, col=1)
+
+fig.update_layout(title_text=f'Stock Prices for {selected_stock} ({start_date.strftime("YYYY/MM/DD")} to {end_date.strftime("YYYY/MM/DD")})',
+                  xaxis_title='Date', legend=dict(x=0, y=1), height=800)
+
+st.plotly_chart(fig)
+
+# Plot moving averages
+ma_50_days = data['Close'].rolling(50).mean()
+ma_100_days = data['Close'].rolling(100).mean()
+
+
+fig_moving_avg = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                              subplot_titles=('Price vs MA50', 'Price vs MA50 vs MA100'))
+
+fig_moving_avg.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price'), row=1, col=1)
+fig_moving_avg.add_trace(go.Scatter(x=data.index, y=ma_50_days, mode='lines', name='MA50'), row=1, col=1)
+
+fig_moving_avg.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price'), row=2, col=1)
+fig_moving_avg.add_trace(go.Scatter(x=data.index, y=ma_50_days, mode='lines', name='MA50'), row=2, col=1)
+fig_moving_avg.add_trace(go.Scatter(x=data.index, y=ma_100_days, mode='lines', name='MA100'), row=2, col=1)
+
+
+
+fig_moving_avg.update_layout(title_text=f'Moving Averages for {selected_stock} ({start_date.strftime("YYYY/MM/DD")} to {end_date.strftime("YYYY/MM/DD")})',
+                             xaxis_title='Date', height=800)
+
+st.plotly_chart(fig_moving_avg)
+
+# Calculate RSI
+def calculate_rsi(data, window=14):
+    delta = data.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+rsi = calculate_rsi(data['Close'])
+
+# Plot RSI
+fig_rsi = go.Figure()
+fig_rsi.add_trace(go.Scatter(x=data.index, y=rsi, mode='lines', name='RSI'))
+fig_rsi.update_layout(title_text=f'Relative Strength Index (RSI) for {selected_stock} ({start_date.strftime("YYYY/MM/DD")} to {end_date.strftime("YYYY/MM/DD")})',
+                      xaxis_title='Date', yaxis_title='RSI', legend=dict(x=0, y=1))
+st.plotly_chart(fig_rsi)
+
+# Calculate MACD
+def calculate_macd(data, short_window=12, long_window=26):
+    short_ema = data['Close'].ewm(span=short_window, min_periods=1).mean()
+    long_ema = data['Close'].ewm(span=long_window, min_periods=1).mean()
+    macd = short_ema - long_ema
+    signal = macd.ewm(span=9, min_periods=1).mean()
+    return macd, signal
+
+macd, signal = calculate_macd(data)
+
+# Plot MACD
+fig_macd = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                         subplot_titles=('MACD Line', 'Signal Line'))
+
+fig_macd.add_trace(go.Scatter(x=data.index, y=macd, mode='lines', name='MACD'), row=1, col=1)
+fig_macd.add_trace(go.Scatter(x=data.index, y=signal, mode='lines', name='Signal'), row=2, col=1)
+
+fig_macd.update_layout(title_text=f'MACD for {selected_stock} ({start_date.strftime("YYYY/MM/DD")} to {end_date.strftime("YYYY/MM/DD")})',
+                       xaxis_title='Date', height=800)
+
+st.plotly_chart(fig_macd)
+
+# Calculate Bollinger Bands
+def calculate_bollinger_bands(data, window=20, num_std=2):
+    rolling_mean = data['Close'].rolling(window=window).mean()
+    rolling_std = data['Close'].rolling(window=window).std()
+    upper_band = rolling_mean + (rolling_std * num_std)
+    lower_band = rolling_mean - (rolling_std * num_std)
+    return upper_band, lower_band
+
+upper_band, lower_band = calculate_bollinger_bands(data)
+
+# Plot Bollinger Bands
+fig_bb = go.Figure()
+fig_bb.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price'))
+fig_bb.add_trace(go.Scatter(x=data.index, y=upper_band, mode='lines', name='Upper Bollinger Band'))
+fig_bb.add_trace(go.Scatter(x=data.index, y=lower_band, mode='lines', name='Lower Bollinger Band'))
+
+fig_bb.update_layout(title_text=f'Bollinger Bands for {selected_stock} ({start_date.strftime("YYYY/MM/DD")} to {end_date.strftime("YYYY/MM/DD")})',
+                     xaxis_title='Date', yaxis_title='Price', legend=dict(x=0, y=1))
+st.plotly_chart(fig_bb)
