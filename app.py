@@ -5,7 +5,7 @@ from keras.models import load_model
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.preprocessing import MinMaxScale
+from sklearn.preprocessing import MinMaxScaler
 
 #LSTM model
 model = load_model('D:\\Stock-Predictions-Model-main\\Stock-Predictions-Model-main\\Stock Predictions Model.keras')
