@@ -54,22 +54,23 @@ scale = 1 / scaler.scale_
 predict = predict * scale
 y = y * scale
 
-# Plot actual stock prices against predicted prices
-fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
-                    subplot_titles=('Stock deviation', 'Volume'))
- 
-fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price'), row=1, col=1)
+fig_candlestick = go.Figure()
+fig_candlestick.add_trace(go.Candlestick(x=data.index,
+                                         open=data['Open'],
+                                         high=data['High'],
+                                         low=data['Low'],
+                                         close=data['Close'],
+                                         name='Candlestick'))
+fig_candlestick.update_layout(title_text=f'Candlestick Chart for {selected_stock} ({start_date.strftime("%Y/%m/%d")} to {end_date.strftime("%Y/%m/%d")})',
+                              xaxis_title='Date', yaxis_title='Price', legend=dict(x=0, y=1))
+st.plotly_chart(fig_candlestick)
 
-
-
-
-
-fig.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume'), row=2, col=1)
-
-fig.update_layout(title_text=f'Stock Prices for {selected_stock} ({start_date.strftime("YYYY/MM/DD")} to {end_date.strftime("YYYY/MM/DD")})',
-                  xaxis_title='Date', legend=dict(x=0, y=1), height=800)
-
-st.plotly_chart(fig)
+# Plot volume
+fig_volume = go.Figure()
+fig_volume.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume', marker_color='blue'))
+fig_volume.update_layout(title_text=f'Volume for {selected_stock} ({start_date.strftime("%Y/%m/%d")} to {end_date.strftime("%Y/%m/%d")})',
+                         xaxis_title='Date', yaxis_title='Volume', legend=dict(x=0, y=1))
+st.plotly_chart(fig_volume)
 
 # Plot moving averages
 ma_50_days = data['Close'].rolling(50).mean()
